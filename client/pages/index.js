@@ -43,9 +43,9 @@ export default function Home() {
             });
         });
 
-        socket.on("new-producer", () => {
+        socket.on("new-producer", async () => {
             console.log("receiving stream");
-            receiveStreams();
+            await receiveStreams();
         });
 
         return () => {
@@ -98,7 +98,12 @@ export default function Home() {
 
         const videoTrack = videoStream.getVideoTracks()[0];
 
-        producer = await producerTransport.produce({ track: videoTrack });
+        producer = await producerTransport.produce({
+            track: videoTrack,
+            codecOptions: {
+                videoGoogleStartBitrate: 1000,
+            },
+        });
 
         producer.on("trackended", () => {
             console.log("trackended");
@@ -108,9 +113,8 @@ export default function Home() {
         producer.on("transportclose", () => {
             console.log("producer closed");
             socket.emit("producer-closed", producer.id);
+            videoStream.srcObject.getTracks().forEach((track) => track.stop());
         });
-
-        socket.emit("producer-finished");
     }
 
     async function receiveStreams() {
@@ -182,10 +186,11 @@ export default function Home() {
                                         document.createElement("video");
                                     streamsContainer.current.append(recvVideo);
                                     recvVideo.dataset.consumerId = consumer.id;
-                                    recvVideo.autoplay = true;
                                     recvVideo.srcObject = new MediaStream([
                                         track,
                                     ]);
+                                    recvVideo.muted = true;
+                                    recvVideo.play();
                                 }
                             }
                         );
