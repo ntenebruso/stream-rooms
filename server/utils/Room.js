@@ -19,14 +19,17 @@ class Room {
     }
 
     getProducerList() {
-        let producerList = [];
+        const producerList = {};
+        console.log(producerList);
         this.peers.forEach((peer) => {
-            peer.producers.forEach((producer) => {
-                producerList.push({
-                    producer_id: producer.id,
+            if (peer.producers.size > 0) {
+                producerList[peer.id] = [];
+                peer.producers.forEach((producer) => {
+                    producerList[peer.id].push(producer.id);
                 });
-            });
+            }
         });
+        console.log(producerList);
         return producerList;
     }
 
@@ -92,13 +95,20 @@ class Room {
                 );
 
             consumer.on("producerclose", () => {
-                console.log("Consumer closed due to producerclose event");
-                this.peers.get(socketId).removeConsumer(consumer.id);
+                console.log(
+                    "Consumer closed due to producerclose event",
+                    socketId
+                );
                 this.io.to(socketId).emit("consumer-close", consumer.id);
+                this.peers.get(socketId).removeConsumer(consumer.id);
             });
 
             return { consumer, params };
         }
+    }
+
+    resumeConsumer(socketId, consumerId) {
+        this.peers.get(socketId).resumeConsumer(consumerId);
     }
 
     closeProducer(socketId, producerId) {

@@ -31,7 +31,7 @@ async function runMediasoupWorker() {
 }
 
 async function runSocketServer() {
-    const room = new Room("Test_Room", worker);
+    const room = new Room("Test_Room", worker, io.of("/media"));
     io.of("/media").on("connection", async (socket) => {
         const peer = new Peer(socket.id, "Test_User");
         room.addPeer(peer);
@@ -61,12 +61,16 @@ async function runSocketServer() {
                 parameters.transportId,
                 parameters
             );
-            callback(producer.id);
+            await callback(producer.id);
+        });
+
+        socket.on("producer-finished", () => {
+            io.of("/media").emit("new-producer");
         });
 
         socket.on("get-producers", async (callback) => {
             const producers = room.getProducerList();
-            callback(producers[0]);
+            callback(producers);
         });
 
         socket.on(
@@ -82,9 +86,12 @@ async function runSocketServer() {
                     devRtpCapabilities
                 );
                 callback(params);
-                await consumer.resume();
             }
         );
+
+        socket.on("resume-consumer", async (consumerId) => {
+            room.resumeConsumer(socket.id, consumerId);
+        });
 
         socket.on("producer-closed", (producerId) => {
             console.log("Producer closed");

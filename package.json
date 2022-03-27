@@ -1,0 +1,11 @@
+{
+    "name": "stream-rooms",
+    "version": "1.0.0",
+    "repository": "https://github.com/ntenebruso/stream-rooms.git",
+    "author": "Nick Tenebruso <nickten2006@gmail.com>",
+    "license": "MIT",
+    "scripts": {
+        "dev-client": "cd client && yarn run dev",
+        "dev-server": "cd server && yarn run dev"
+    }
+}

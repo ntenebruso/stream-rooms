@@ -47,12 +47,16 @@ class Peer {
         };
     }
 
+    async resumeConsumer(consumerId) {
+        await this.consumers.get(consumerId).resume();
+    }
+
     removeConsumer(consumerId) {
         this.consumers.delete(consumerId);
     }
 
-    closeProducer(producerId) {
-        this.producers.get(producerId).close();
+    async closeProducer(producerId) {
+        await this.producers.get(producerId).close();
         this.producers.delete(producerId);
         console.log("deleted");
     }

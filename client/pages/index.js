@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 import { Device } from "mediasoup-client";
 
@@ -13,6 +13,8 @@ export default function Home() {
         consumerTransport,
         consumer;
 
+    const streamsContainer = useRef(null);
+
     useEffect(() => {
         const socketInstance = io("ws://localhost:5000/media");
         setSocket(socketInstance);
@@ -26,7 +28,29 @@ export default function Home() {
             console.log("RTP Capabilities:", rtpCapabilities);
             device = new Device();
             device.load({ routerRtpCapabilities: rtpCapabilities });
+            receiveStreams();
         });
+
+        socket.on("consumer-close", (consumerId) => {
+            console.log(
+                "consumer closed due to producerclose event",
+                consumerId
+            );
+            streamsContainer.current.childNodes.forEach((child) => {
+                if (child.dataset.consumerId == consumerId) {
+                    child.remove();
+                }
+            });
+        });
+
+        socket.on("new-producer", () => {
+            console.log("receiving stream");
+            receiveStreams();
+        });
+
+        return () => {
+            socket.off("new-producer");
+        };
     }, [socket]);
 
     async function startStream() {
@@ -73,20 +97,33 @@ export default function Home() {
         sendVideo.srcObject = videoStream;
 
         const videoTrack = videoStream.getVideoTracks()[0];
+
         producer = await producerTransport.produce({ track: videoTrack });
 
         producer.on("trackended", () => {
+            console.log("trackended");
             socket.emit("producer-closed", producer.id);
         });
 
         producer.on("transportclose", () => {
+            console.log("producer closed");
             socket.emit("producer-closed", producer.id);
         });
+
+        socket.emit("producer-finished");
     }
 
-    async function receiveStream() {
+    async function receiveStreams() {
+        while (streamsContainer.current.firstChild) {
+            streamsContainer.current.removeChild(
+                streamsContainer.current.firstChild
+            );
+            console.log("REMOVE");
+        }
+
         await socket.emit("create-transport", async (params) => {
             consumerTransport = await device.createRecvTransport(params);
+            console.log("Consumer transport created:", params);
 
             consumerTransport.on(
                 "connect",
@@ -104,41 +141,62 @@ export default function Home() {
                 }
             );
 
-            await socket.emit("get-producers", async (producer) => {
-                if (!producer) {
-                    return alert("Not streaming yet");
+            await socket.emit("get-producers", async (producerPeers) => {
+                if (Object.keys(producerPeers).length == 0) {
+                    return console.log("Stream has not started");
                 }
+                console.log("producer peers", producerPeers);
+                Object.values(producerPeers).forEach(async (producerPeer) => {
+                    for (var i = 0; i < producerPeer.length; i++) {
+                        const producerId = producerPeer[i];
+                        console.log("producer id", producerId);
+                        await socket.emit(
+                            "consume",
+                            {
+                                consumerTransportId: consumerTransport.id,
+                                producerId: producerId,
+                                devRtpCapabilities: device.rtpCapabilities,
+                            },
+                            async (params) => {
+                                if (params.error) {
+                                    return console.error("Cannot consume");
+                                }
 
-                const producerId = producer.producer_id;
+                                consumer = await consumerTransport.consume({
+                                    id: params.id,
+                                    producerId: params.producerId,
+                                    kind: params.kind,
+                                    rtpParameters: params.rtpParameters,
+                                });
 
-                await socket.emit(
-                    "consume",
-                    {
-                        consumerTransportId: consumerTransport.id,
-                        producerId: producerId,
-                        devRtpCapabilities: device.rtpCapabilities,
-                    },
-                    async (params) => {
-                        if (params.error) {
-                            return console.error("Cannot consume");
-                        }
+                                const { track } = consumer;
 
-                        consumer = await consumerTransport.consume({
-                            id: params.id,
-                            producerId: params.producerId,
-                            kind: params.kind,
-                            rtpParameters: params.rtpParameters,
-                        });
+                                await socket.emit(
+                                    "resume-consumer",
+                                    consumer.id
+                                );
 
-                        const { track } = consumer;
-
-                        const recvVideo =
-                            document.getElementById("receive-video");
-                        recvVideo.srcObject = new MediaStream([track]);
+                                console.log("track", track);
+                                if (track.kind == "video") {
+                                    const recvVideo =
+                                        document.createElement("video");
+                                    streamsContainer.current.append(recvVideo);
+                                    recvVideo.dataset.consumerId = consumer.id;
+                                    recvVideo.autoplay = true;
+                                    recvVideo.srcObject = new MediaStream([
+                                        track,
+                                    ]);
+                                }
+                            }
+                        );
                     }
-                );
+                });
             });
         });
+    }
+
+    async function stopStream() {
+        producerTransport.close();
     }
 
     return (
@@ -146,8 +204,9 @@ export default function Home() {
             <h1>StreamRooms</h1>
             <video id="send-video" width="600" height="300" autoPlay></video>
             <button onClick={startStream}>Start stream</button>
-            <video id="receive-video" autoPlay></video>
-            <button onClick={receiveStream}>Receive rtc video</button>
+            <button onClick={stopStream}>Stop stream</button>
+            <button onClick={receiveStreams}>receive streams</button>
+            <div id="streams" ref={streamsContainer}></div>
         </div>
     );
 }
