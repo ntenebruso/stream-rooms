@@ -20,7 +20,6 @@ class Room {
 
     getProducerList() {
         const producerList = {};
-        console.log(producerList);
         this.peers.forEach((peer) => {
             if (peer.producers.size > 0) {
                 producerList[peer.id] = [];

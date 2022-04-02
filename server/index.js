@@ -61,12 +61,8 @@ async function runSocketServer() {
                 parameters.transportId,
                 parameters
             );
-            io.of("/media").emit("new-producer");
+            socket.broadcast.emit("new-producer", producer.id);
             await callback(producer.id);
-        });
-
-        socket.on("producer-finished", () => {
-            io.of("/media").emit("new-producer");
         });
 
         socket.on("get-producers", async (callback) => {
